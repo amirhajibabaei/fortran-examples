@@ -1,6 +1,7 @@
 program test
 use iso_fortran_env, only: real64, real32
 !use f95_precision
+use blas95
 use lapack95
 implicit none
 integer, parameter :: n = 1000, pr = real64
@@ -32,7 +33,8 @@ call getri(b,ipiv,info)
 if( info/=0 ) call sysexit('Inversion not successful')
 
 ! c = I
-c = matmul( a, b )
+!c = matmul( a, b )
+call gemm( a, b, c )
 
 ! check if c = I
 do i = 1, n
