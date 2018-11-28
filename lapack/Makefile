@@ -14,10 +14,13 @@ OBJ = lapack_matrix_inversion.o
 a.out: $(OBJ)
 	$(FC) -o $@ $^ $(LDFLAGS)
 
-.PHONY: clean
+.PHONY: clean, veryclean
 
 clean:
 	rm -f *.o
+
+veryclean:
+	rm -f *.o a.out
 
 # $@ means left of :
 # $^ means right of :
