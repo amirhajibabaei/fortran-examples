@@ -35,5 +35,5 @@ for a,b,c, il, jl in zip(I,J,R, i, j):
     ax.text( d,e-0.2, '({},{})'.format(il,jl) )
 
 a, b = trans(I,J)
-ax.scatter( a,b,c=R,cmap='hsv')
+ax.scatter( a,b,c=R,cmap='jet')
 plt.show()

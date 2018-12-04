@@ -11,7 +11,7 @@ module dummy
         integer              :: r1st, c1st
         integer              :: ctxt
         contains
-            procedure        :: print, destroy, stop_all
+            procedure        :: print_process_grid, destroy, stop_all
     end type 
 
     interface process_grid
@@ -29,8 +29,8 @@ module dummy
         integer, allocatable :: ipiv(:)
         contains
             procedure        :: bc_coords => block_cyclic_coords
-            procedure        :: print_mapping
             procedure        :: set       => set_dense_matrix
+            procedure        :: print_mapping, serial_matrix, print_matrix
     end type 
 
     interface dense_matrix
@@ -78,7 +78,7 @@ module dummy
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        subroutine print(p)
+        subroutine print_process_grid(p)
         implicit none
         class(process_grid), intent(in) :: p
         write( output_unit, '("process",i3,2x,"out of",i3,2x)', advance='no' )  p%rank, p%size
@@ -149,6 +149,29 @@ module dummy
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        subroutine serial_matrix(dm)
+        implicit none
+        class(dense_matrix), intent(inout) :: dm
+        integer                            :: i, j
+        do i = 1, dm%mg
+            do j = 1, dm%ng
+                call dm%set(i,j, real(j-1)*dm%mg + real(i) )
+            end do
+        end do
+        end subroutine
+
+
+        subroutine print_matrix(dm,u)
+        implicit none
+        class(dense_matrix), intent(inout) :: dm
+        integer,                intent(in) :: u
+        real                               :: work( dm%mb )
+        call pslaprnt( dm%mg, dm%ng, dm%la(1,1), 1, 1, dm%desc, 0, 0, "", u, work )
+        ! note: pslaprnt for double, etc.
+        end subroutine
+
+        ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
         subroutine set_dense_matrix( dm, i, j, val )
         implicit none
         class(dense_matrix), intent(inout) :: dm
@@ -176,10 +199,10 @@ real               :: work(m)
 
 pc = process_grid(p,q)
 dm = dense_matrix( m, n, mb, nb, pc )
-call pc%print()
-call dm%print_mapping()
 
-!call pdlaprnt( dm%mg, dm%ng, dm%la(1,1), 1, 1, dm%desc, 0, 0, "", 6, work )
+call dm%serial_matrix()
+call dm%print_matrix(6)
+
 !call psgetrf( dm%mg, dm%ng, dm%la, 1, 1, dm%desc, dm%ipiv, info )
 !if( info /= 0 ) then
 !    write(*,*) info
