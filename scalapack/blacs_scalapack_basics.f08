@@ -4,35 +4,37 @@ module dummy
 
 
     type process_grid
-        integer             :: rank
-        integer             :: nprocs
-        integer             :: row, col
-        integer             :: nrows, ncols
-        integer             :: row_1st, col_1st
-        integer             :: ctxt
+        integer              :: rank
+        integer              :: size
+        integer              :: myr, myc
+        integer              :: npr, npc
+        integer              :: r1st, c1st
+        integer              :: ctxt
         contains
-            procedure       :: print, destroy, stop_all
+            procedure        :: print, destroy, stop_all
     end type 
 
     interface process_grid
-        procedure           :: init_processes
+        procedure            :: init_processes
     end interface 
 
 
     type dense_matrix
-        type(process_grid)  :: proc
-        integer             :: descriptor(9)
-        integer             :: rows_glob, cols_glob
-        integer             :: rows_block, cols_block
-        integer             :: rows_local, cols_local
-        real, allocatable   :: localarray(:,:)
+        type(process_grid)   :: pc
+        integer              :: desc(9)
+        integer              :: mg, ng
+        integer              :: mb, nb
+        integer              :: ml, nl
+        real, allocatable    :: la(:,:)
+        integer, allocatable :: ipiv(:)
         contains
-            procedure       :: bc_coords => block_cyclic_coords
-            procedure       :: set       => set_dense_matrix
+            procedure        :: bc_coords => block_cyclic_coords
+            procedure        :: print_mapping
+            procedure        :: set       => set_dense_matrix
     end type 
 
     interface dense_matrix
-        procedure           :: init_dense_matrix
+        procedure            :: init_dense_matrix
     end interface
 
 
@@ -42,34 +44,34 @@ module dummy
         ! ########################################################### process grid
         ! ###########################################################
 
-        function init_processes( p, q ) result(proc)
+        function init_processes( p, q ) result(pc)
         implicit none
         integer, intent(in) :: p, q
-        type(process_grid)  :: proc
+        type(process_grid)  :: pc
         external            :: blacs_pinfo, sl_init, blacs_gridinfo
-        call blacs_pinfo( proc%rank, proc%nprocs )
-        if( p*q/=proc%nprocs ) call proc%stop_all( "p*q /= nprocs!" )
-        call sl_init( proc%ctxt, p, q )
-        call blacs_gridinfo( proc%ctxt, proc%nrows, proc%ncols, proc%row, proc%col )
-        proc%row_1st = 0
-        proc%col_1st = 0
+        call blacs_pinfo( pc%rank, pc%size )
+        if( p*q/=pc%size ) call pc%stop_all( "p*q /= size!" )
+        call sl_init( pc%ctxt, p, q )
+        call blacs_gridinfo( pc%ctxt, pc%npr, pc%npc, pc%myr, pc%myc )
+        pc%r1st = 0
+        pc%c1st = 0
         end function
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        subroutine destroy( proc )
+        subroutine destroy( pc )
         implicit none
-        class(process_grid), intent(in) :: proc
+        class(process_grid), intent(in) :: pc
         external                        :: blacs_gridexit
-        call blacs_gridexit( proc%ctxt )
+        call blacs_gridexit( pc%ctxt )
         end subroutine
 
-        subroutine stop_all( proc, message )
+        subroutine stop_all( pc, message )
         implicit none
-        class(process_grid), intent(in)        :: proc
+        class(process_grid), intent(in)        :: pc
         character(len=*), intent(in), optional :: message
         external                               :: blacs_exit
-        if( present(message) .and. proc%rank==0 ) print *, message
+        if( present(message) .and. pc%rank==0 ) print *, message
         call blacs_exit(0)
         stop
         end subroutine
@@ -79,66 +81,83 @@ module dummy
         subroutine print(p)
         implicit none
         class(process_grid), intent(in) :: p
-        write( output_unit, '("process",i3,2x,"out of",i3,2x)', advance='no' )  p%rank, p%nprocs
-        write( output_unit, '("indexed",2i3,2x)', advance='no' )  p%row, p%col 
-        write( output_unit, '("in process grid of the size",2i3)') p%nrows, p%ncols
+        write( output_unit, '("process",i3,2x,"out of",i3,2x)', advance='no' )  p%rank, p%size
+        write( output_unit, '("indexed",2i3,2x)', advance='no' )  p%myr, p%myc 
+        write( output_unit, '("in process grid of the size",2i3)') p%npr, p%npc
         end subroutine
 
         ! ###########################################################
         ! ########################################################### dense matrix
         ! ###########################################################
 
-        function init_dense_matrix( rows_glob, cols_glob, rows_block, cols_block, proc ) result(dm)
+        function init_dense_matrix( mg, ng, mb, nb, pc ) result(dm)
         implicit none
-        integer, intent(in)             :: rows_glob, cols_glob
-        integer, intent(in)             :: rows_block, cols_block
-        class(process_grid), intent(in) :: proc
+        integer, intent(in)             :: mg, ng
+        integer, intent(in)             :: mb, nb
+        class(process_grid), intent(in) :: pc
         type(dense_matrix)              :: dm
         integer                         :: info, numroc
         external                        :: numroc, descinit
-        dm%rows_glob = rows_glob
-        dm%cols_glob = cols_glob
-        dm%rows_block = rows_block
-        dm%cols_block = cols_block
-        dm%rows_local = max( 1,  numroc( dm%rows_glob, dm%rows_block, proc%row, proc%row_1st, proc%nrows ) )
-        dm%cols_local = max( 1,  numroc( dm%cols_glob, dm%cols_block, proc%col, proc%col_1st, proc%ncols ) )
-        call descinit( dm%descriptor , dm%rows_glob, dm%cols_glob, dm%rows_block, dm%cols_block, proc%row_1st, proc%col_1st, proc%ctxt, dm%rows_local, info )
-        if( info/=0 ) call proc%stop_all( "descinit info /=0" )
-        dm%proc = proc
-        allocate(dm%localarray(dm%rows_local,dm%cols_local))
+        dm%mg = mg; dm%mb = mb
+        dm%ng = ng; dm%nb = nb
+        dm%ml = max( 1,  numroc( dm%mg, dm%mb, pc%myr, pc%r1st, pc%npr ) )
+        dm%nl = max( 1,  numroc( dm%ng, dm%nb, pc%myc, pc%c1st, pc%npc ) )
+        call descinit( dm%desc , dm%mg, dm%ng, dm%mb, dm%nb, pc%r1st, pc%c1st, pc%ctxt, dm%ml, info )
+        dm%pc = pc
+        if( info/=0 ) call pc%stop_all( "descinit info /=0" )
+        allocate(dm%la(dm%ml,dm%nl))
+        allocate(dm%ipiv(dm%ml+dm%mb))
         end function
 
-        ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ i,j -> ip,jp and il,jl
 
-        subroutine block_cyclic_1d( iglob, nblock, ifirst, nproc, iproc, iloc )
+        subroutine block_cyclic_1d( i, nb, p1st, np, ip, il )
         implicit none
-        integer, intent(in)  :: iglob, nblock, ifirst, nproc
-        integer, intent(out) :: iproc, iloc
-        iproc = mod( ifirst + (iglob-1)/nblock , nproc )
-        iloc = mod( iglob-1, nblock ) + 1
+        integer, intent(in)  :: i, nb, p1st, np
+        integer, intent(out) :: ip, il
+        ip = mod( p1st + (i-1)/nb , np )
+        il = ((i-1)/(np*nb))*nb + mod( i-1, nb ) + 1
         end subroutine
 
-
-        subroutine block_cyclic_coords( dm, iglob, jglob, iproc, jproc, iloc, jloc ) 
+        subroutine block_cyclic_coords( dm, i, j, ip, jp, il, jl ) 
         implicit none
         class(dense_matrix), intent(in) :: dm
-        integer,            intent(in)  :: iglob, jglob
-        integer,            intent(out) :: iproc, jproc, iloc, jloc
-        call block_cyclic_1d( iglob, dm%rows_block, dm%proc%row_1st, dm%proc%nrows, iproc, iloc)
-        call block_cyclic_1d( jglob, dm%cols_block, dm%proc%col_1st, dm%proc%ncols, jproc, jloc)
+        integer,            intent(in)  :: i, j
+        integer,            intent(out) :: ip, jp, il, jl
+        call block_cyclic_1d( i, dm%mb, dm%pc%r1st, dm%pc%npr, ip, il)
+        call block_cyclic_1d( j, dm%nb, dm%pc%c1st, dm%pc%npc, jp, jl)
+        end subroutine
+
+        subroutine print_mapping(dm)
+        implicit none
+        class(dense_matrix), intent(in) :: dm
+        integer                         :: i, j, ip, jp, il, jl, u
+        if( dm%pc%rank==0 ) then
+            open( newunit=u, file='dense_matrix_mapping.txt' )
+            write(u,*) '#global', dm%mg, dm%ng
+            write(u,*) '#block', dm%mb, dm%nb
+            write(u,*) '#process', dm%pc%npr, dm%pc%npc
+            do i = 1, dm%mg
+                do j = 1, dm%ng
+                    call dm%bc_coords(i,j,ip,jp,il,jl)
+                    write(u,*) i,j,ip,jp,il,jl
+                end do
+            end do
+            close(u)
+        end if
         end subroutine
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        subroutine set_dense_matrix( dm, iglob, jglob, val )
+        subroutine set_dense_matrix( dm, i, j, val )
         implicit none
         class(dense_matrix), intent(inout) :: dm
-        integer,                intent(in) :: iglob, jglob
+        integer,                intent(in) :: i, j
         real,                   intent(in) :: val
-        integer                            :: iproc, jproc, iloc, jloc
-        call dm%bc_coords( iglob, jglob, iproc, jproc, iloc, jloc )
-        if( dm%proc%row==iproc .and. dm%proc%col==jproc ) then
-            dm%localarray( iloc, jloc ) = val
+        integer                            :: ip, jp, il, jl
+        call dm%bc_coords( i, j, ip, jp, il, jl )
+        if( dm%pc%myr==ip .and. dm%pc%myc==jp ) then
+            dm%la( il, jl ) = val
         end if
         end subroutine
 
@@ -149,24 +168,26 @@ end module dummy
 program test
 use dummy
 implicit none
-integer, parameter :: p = 2, q = 2, m = 9, n = 9, mb = 2, nb = 2
-type(process_grid) :: proc
+integer, parameter :: p = 2, q = 2, m = 8, n = 8, mb = 2, nb = 2
+type(process_grid) :: pc
 type(dense_matrix) :: dm
-integer            :: i, j, ii, jj, prow, pcol
-integer, external           :: blacs_pnum
+integer            :: i, j, info
+real               :: work(m) 
 
-proc = process_grid(p,q)
-dm = dense_matrix( m, n, mb, nb, proc )
+pc = process_grid(p,q)
+dm = dense_matrix( m, n, mb, nb, pc )
+call pc%print()
+call dm%print_mapping()
 
-do i = 1, m
-   do j = 1, n
-      call dm%bc_coords( i, j, prow, pcol, ii, jj )
-      if(dm%proc%rank==0) write(*,*) i, j, blacs_pnum( dm%proc%ctxt, prow, pcol )
-   end do
-end do
+!call pdlaprnt( dm%mg, dm%ng, dm%la(1,1), 1, 1, dm%desc, 0, 0, "", 6, work )
+!call psgetrf( dm%mg, dm%ng, dm%la, 1, 1, dm%desc, dm%ipiv, info )
+!if( info /= 0 ) then
+!    write(*,*) info
+!    call pc%stop_all("ooo")
+!end if
 
-call proc%destroy()
-call proc%stop_all()
+call pc%destroy()
+call pc%stop_all()
 
 end program
 
