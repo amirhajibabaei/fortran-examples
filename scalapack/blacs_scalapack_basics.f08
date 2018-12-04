@@ -28,6 +28,7 @@ module dummy
         real, allocatable    :: la(:,:)
         integer, allocatable :: ipiv(:)
         contains
+            procedure        :: locr, locc
             procedure        :: bc_coords => block_cyclic_coords
             procedure        :: set       => set_dense_matrix
             procedure        :: print_mapping, serial_matrix, print_matrix
@@ -107,6 +108,34 @@ module dummy
         if( info/=0 ) call pc%stop_all( "descinit info /=0" )
         allocate(dm%la(dm%ml,dm%nl))
         allocate(dm%ipiv(dm%ml+dm%mb))
+        end function
+
+        ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ LOCr(), LOCc()
+
+        integer &
+        function locr( dm, s ) 
+        implicit none
+        class(dense_matrix), intent(in) :: dm
+        integer, intent(in), optional   :: s
+        integer, external               :: numroc
+        if( present(s) ) then
+            locr = max( 1, numroc( s,     dm%mb, dm%pc%myr, dm%pc%r1st, dm%pc%npr ) )
+        else
+            locr = max( 1, numroc( dm%mg, dm%mb, dm%pc%myr, dm%pc%r1st, dm%pc%npr ) )
+        end if
+        end function
+
+        integer &
+        function locc( dm, s ) 
+        implicit none
+        class(dense_matrix), intent(in) :: dm
+        integer, intent(in), optional   :: s
+        integer, external               :: numroc
+        if( present(s) ) then
+            locc = max( 1,  numroc( s,     dm%nb, dm%pc%myc, dm%pc%c1st, dm%pc%npc ) )
+        else
+            locc = max( 1,  numroc( dm%ng, dm%nb, dm%pc%myc, dm%pc%c1st, dm%pc%npc ) )
+        end if
         end function
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ i,j -> ip,jp and il,jl
@@ -191,23 +220,32 @@ end module dummy
 program test
 use dummy
 implicit none
-integer, parameter :: p = 2, q = 2, m = 8, n = 8, mb = 2, nb = 2
+integer, parameter :: p = 2, q = 2, m = 9, n = 9, mb = 2, nb = 2
 type(process_grid) :: pc
 type(dense_matrix) :: dm
 integer            :: i, j, info
-real               :: work(m) 
+real               :: rnd
 
 pc = process_grid(p,q)
 dm = dense_matrix( m, n, mb, nb, pc )
+call dm%print_mapping()
+do i = 1, dm%mg
+    do j = 1, dm%ng
+        call random_number(rnd)
+        call dm%set( i, j, rnd )
+    end do
+end do
 
-call dm%serial_matrix()
-call dm%print_matrix(6)
+print *, dm%pc%rank, dm%locr(), dm%locc()
+!call dm%print_matrix(6)
 
-!call psgetrf( dm%mg, dm%ng, dm%la, 1, 1, dm%desc, dm%ipiv, info )
-!if( info /= 0 ) then
-!    write(*,*) info
-!    call pc%stop_all("ooo")
-!end if
+! LU factorization
+call psgetrf( dm%mg, dm%ng, dm%la, 1, 1, dm%desc, dm%ipiv, info )
+if( info /= 0 ) call pc%stop_all("LU factorization unsuccessful")
+
+! Inversion
+! not completed yet! call psgetri( dm%mg, dm%la, 1, 1, dm%desc, work, lwork, dm%ipiv, info )
+
 
 call pc%destroy()
 call pc%stop_all()
