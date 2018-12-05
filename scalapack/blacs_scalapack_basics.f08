@@ -39,7 +39,46 @@ module dummy
     end interface
 
 
+    interface nums_lcm
+        procedure least_common_multiple
+    end interface
+
+    interface nums_gcd
+        procedure greatest_common_divisor
+    end interface
+
+
     contains
+
+        ! ###########################################################
+        ! ########################################################### auxiliary 
+        ! ###########################################################
+
+
+        pure elemental &
+        function least_common_multiple(x,y) result(c)
+        implicit none
+        integer, intent(in) :: x,y
+        integer             :: c
+        c = x*y / greatest_common_divisor(x,y)
+        end function
+
+        pure elemental &
+        function greatest_common_divisor(x,y) result(c)
+        implicit none
+        integer, intent(in) :: x,y
+        integer             :: a,b
+        integer             :: t,c
+        a = x
+        b = y
+        do while (b/=0)
+            t = b
+            b = mod(a,b)
+            a = t
+        end do
+        c = abs(a)
+        end function
+
 
         ! ###########################################################
         ! ########################################################### process grid
@@ -236,7 +275,6 @@ do i = 1, dm%mg
     end do
 end do
 
-print *, dm%pc%rank, dm%locr(), dm%locc()
 !call dm%print_matrix(6)
 
 ! LU factorization
