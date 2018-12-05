@@ -26,7 +26,6 @@ module easy_scalapack
         integer              :: mb, nb
         integer              :: ml, nl
         real, allocatable    :: la(:,:)
-        integer, allocatable :: ipiv(:)
         contains
             procedure        :: locr, locc
             procedure        :: bc_coords => block_cyclic_coords
@@ -40,8 +39,9 @@ module easy_scalapack
 
     type subarray
         integer              :: ia, ja, m, n
-        integer, pointer     :: desc(:)
+        integer, pointer     :: desc(:), mb, nb, lld
         real, pointer        :: la(:,:)
+        integer, allocatable :: ipiv(:)
     end type
 
     interface subarray
@@ -156,7 +156,6 @@ module easy_scalapack
         dm%pc = pc
         if( info/=0 ) call pc%stop_all( "descinit info /=0" )
         allocate(dm%la(dm%ml,dm%nl))
-        allocate(dm%ipiv(dm%ml+dm%mb))
         end function
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ LOCr(), LOCc()
@@ -293,6 +292,11 @@ module easy_scalapack
         end if
         sa%desc => dm%desc
         sa%la   => dm%la
+        sa%mb   => dm%mb 
+        sa%nb   => dm%nb
+        sa%lld  => dm%ml
+        !
+        allocate( sa%ipiv(( dm%locr(sa%m)+sa%mb )) )
         end function
 
 end module easy_scalapack
