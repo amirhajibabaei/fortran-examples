@@ -1,12 +1,12 @@
 FC = mpifort
 
-FFLAGS = -fdefault-integer-8 -I${F95ROOT}/include/intel64/ilp64 -m64 -I${MKLROOT}/include -Wall -Wextra 
+FFLAGS = -fdefault-integer-8 -m64 -I${MKLROOT}/include -Wall -Wextra 
 
 LDFLAGS = -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_scalapack_ilp64 -lmkl_gf_ilp64 -lmkl_sequential -lmkl_core -lmkl_blacs_openmpi_ilp64 -lpthread -lm -ldl
 
 DEPS =
 
-OBJ = blacs_scalapack_basics.o 
+OBJ =  easy_scalapack.o main.o
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  rules
 a.out: $(OBJ)
