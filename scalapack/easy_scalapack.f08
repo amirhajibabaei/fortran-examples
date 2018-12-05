@@ -38,6 +38,16 @@ module easy_scalapack
         procedure            :: init_dense_matrix
     end interface
 
+    type subarray
+        integer              :: ia, ja, m, n
+        integer, pointer     :: desc(:)
+        real, pointer        :: la(:,:)
+    end type
+
+    interface subarray
+        procedure init_subarray
+    end interface
+
 
     interface nums_lcm
         procedure least_common_multiple
@@ -235,7 +245,7 @@ module easy_scalapack
         integer,                intent(in) :: u
         real                               :: work( dm%mb )
         call pslaprnt( dm%mg, dm%ng, dm%la(1,1), 1, 1, dm%desc, 0, 0, "", u, work )
-        ! note: pslaprnt for double, etc.
+        ! note: pdlaprnt for double, etc.
         end subroutine
 
         ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -251,5 +261,38 @@ module easy_scalapack
             dm%la( il, jl ) = val
         end if
         end subroutine
+
+        ! ###########################################################
+        ! ########################################################### subarray
+        ! ###########################################################
+
+        function init_subarray( dm, ia, ja, m, n ) result(sa)
+        implicit none
+        class(dense_matrix), intent(in), target :: dm
+        integer,   intent(in), optional         :: ia, ja, m, n
+        type(subarray)                          :: sa
+        if( present(ia) ) then
+            sa%ia = ia
+        else
+            sa%ia = 1
+        end if
+        if( present(ja) ) then
+            sa%ja = ja
+        else
+            sa%ja = 1
+        end if
+        if( present(m) ) then
+            sa%m = m
+        else
+            sa%m = dm%mg - sa%ia + 1
+        end if
+        if( present(n) ) then
+            sa%n = n
+        else
+            sa%n = dm%ng - sa%ja + 1
+        end if
+        sa%desc => dm%desc
+        sa%la   => dm%la
+        end function
 
 end module easy_scalapack
