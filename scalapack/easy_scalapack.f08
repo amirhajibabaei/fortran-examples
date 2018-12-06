@@ -42,6 +42,9 @@ module easy_scalapack
         integer, pointer     :: desc(:), mb, nb, lld
         real, pointer        :: la(:,:)
         integer, allocatable :: ipiv(:)
+        integer              :: lwork, liwork
+        real, allocatable    :: work(:)
+        integer, allocatable :: iwork(:)
     end type
 
     interface subarray
@@ -270,6 +273,7 @@ module easy_scalapack
         class(dense_matrix), intent(in), target :: dm
         integer,   intent(in), optional         :: ia, ja, m, n
         type(subarray)                          :: sa
+        integer                                 :: lcm
         if( present(ia) ) then
             sa%ia = ia
         else
@@ -297,6 +301,17 @@ module easy_scalapack
         sa%lld  => dm%ml
         !
         allocate( sa%ipiv(( dm%locr(sa%m)+sa%mb )) )
+        ! work, lwork
+        sa%lwork = dm%locr(( sa%n + mod(sa%ia-1,sa%mb) ))*sa%nb
+        allocate( sa%work(sa%lwork) )
+        ! iwork, liwork
+        sa%liwork = dm%locc(( sa%n + mod(sa%ja-1,sa%nb) )) + sa%nb
+        if( dm%pc%npr/=dm%pc%npc ) then
+            lcm = nums_lcm( dm%pc%npr,dm%pc%npc ) 
+            sa%liwork = sa%liwork - sa%nb + &
+                        max( ceiling( ceiling(real(dm%locr(sa%m))/sa%mb) / (real(lcm)/dm%pc%npr) ), sa%nb )
+        end if
+        allocate( sa%iwork(sa%liwork) )
         end function
 
 end module easy_scalapack
